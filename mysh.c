@@ -14,12 +14,12 @@ int tokenize(char* l) {
     char* current = NULL;
     int tkns = 0;
     int ignore_space = 0;
-    while (*l != '\0') {
-        if (*l == '#' && !ignore_space) {
-            *l = '\0';
-            break;
-        }
+    while (*l != '\0') { 
         if (current == NULL) {
+            if (*l == '#' && !ignore_space) {
+                *l = '\0';
+                break;
+            }
             if (!ignore_space && *l == '"') {
                 ignore_space = 1;
             }
@@ -65,14 +65,32 @@ int main () {
         printf("%s", SHELL_NAME);
     }
     while (fgets(line, LINE_SIZE, stdin) != NULL ) {
-        if (!ignore(line)) {
-            int len = strlen(line);
-            if (line[len-1] == '\n') {
-                line[len-1] = '\0';
-            }
-            printf("Input line: '%s'\n", line);
-            print_tokens(tokenize(line));
+        int len = strlen(line);
+        if (line[len-1] == '\n') {
+            line[len-1] = '\0';
         }
+        printf("Input line: '%s'\n", line);
+        int tokens_count = tokenize(line);
+        print_tokens(tokens_count);
+        
+        for (int i = 3; i > 0; i--) {
+            int k = tokens_count - i;
+            if (k > 0) {
+                char* token = tokens[k];
+                if (*token == '<') {
+                    token++;
+                    printf("Input redirect: '%s'\n", token);
+                }
+                else if (*token == '>') {
+                    token++;
+                    printf("Output redirect: '%s'\n", token);
+                }
+                else if (*token == '&') {
+                    printf("Background: 1\n");
+                }
+            }
+        }
+
         if(iact) {
             printf("%s", SHELL_NAME);
         }

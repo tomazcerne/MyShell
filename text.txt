@@ -1,2 +1,16 @@
-Danes je slabo vreme!
-Upam, da bo jutrišnji dan lepši.
+[1;32mmysh> [0mSupported Built-in Commands:
+> debug [level]
+   changes the debug_level (default: 0) to the value specified by the argument 'level'
+   if no argument is provided, it prints the current debug_level
+> prompt [name]
+   changes the shell prompt (default: 'mysh') to the value specified by the argument 'name'
+   the name is limited to 8 characters
+   if no argument is provided, it prints the current prompt
+> status
+   prints the status returned from the previously executed command
+> exit [status]
+   exits the shell and returns the value specified by the argument 'status'
+   if no argument is provided, it returns the status from the previously executed command
+> help
+   prints a list of all built-in commands along with their explanations
+[1;32mmysh> [0m

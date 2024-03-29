@@ -9,6 +9,18 @@
 
 char line[LINE_SIZE];
 char* tokens[MAX_TOKENS];
+char* args[MAX_TOKENS];
+char* command = NULL;
+char* input_redirect = NULL;
+char* output_redirect = NULL;
+int background = 0;
+
+void globals_reset() {
+    command = NULL;
+    input_redirect = NULL;
+    output_redirect = NULL;
+    background = 0;
+}
 
 int tokenize(char* l) {
     char* current = NULL;
@@ -43,20 +55,39 @@ int tokenize(char* l) {
     return tkns;
 }
 
-void print_tokens(int tkns) {
+void debug_print(int tkns) {
     for (int i = 0; i < tkns; i++) {
         printf("Token %d: '%s'\n", i, tokens[i]);
     }
+    if (input_redirect != NULL) {
+        printf("Input redirect: '%s'\n", input_redirect);
+    }
+    if (output_redirect != NULL) {
+        printf("Output redirect: '%s'\n", output_redirect);
+    }
+    if (background) {
+        printf("Background: 1\n");
+    }
 }
 
-int ignore (char *l) {
-    while (*l != '\0') {
-        if (!isspace(*l)) {
-            return 0;
-        }
-        l++;
+int parse_tokens(int tokens_count) {
+    command = tokens[0];
+    if (tokens_count > 1 && tokens[tokens_count - 1][0] == '&') {
+        background = 1;
+        tokens_count--;
     }
-    return 1;
+    if (tokens_count > 1 && tokens[tokens_count - 1][0] == '>') {
+        output_redirect = &tokens[tokens_count - 1][1];
+        tokens_count--;
+    }
+    if (tokens_count > 1 && tokens[tokens_count - 1][0] == '<') {
+        input_redirect = &tokens[tokens_count - 1][1];
+        tokens_count--;
+    }
+    for (int i = 1; i < tokens_count; i++) {
+        args[i-1] = tokens[i];
+    }
+    return tokens_count - 1;
 }
 
 int main () {
@@ -71,29 +102,14 @@ int main () {
         }
         printf("Input line: '%s'\n", line);
         int tokens_count = tokenize(line);
-        print_tokens(tokens_count);
-        
-        for (int i = 3; i > 0; i--) {
-            int k = tokens_count - i;
-            if (k > 0) {
-                char* token = tokens[k];
-                if (*token == '<') {
-                    token++;
-                    printf("Input redirect: '%s'\n", token);
-                }
-                else if (*token == '>') {
-                    token++;
-                    printf("Output redirect: '%s'\n", token);
-                }
-                else if (*token == '&') {
-                    printf("Background: 1\n");
-                }
-            }
+        if (tokens_count > 0) {
+            int arg_count = parse_tokens(tokens_count);
+            debug_print(tokens_count);
         }
-
         if(iact) {
             printf("%s", SHELL_NAME);
         }
+        globals_reset();
     }
     if(iact) {
         printf("\n");

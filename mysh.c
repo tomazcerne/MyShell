@@ -4,16 +4,9 @@
 #include <ctype.h>
 #include <string.h>
 
-
 #define GREEN_START "\033[1;32m"
 #define GREEN_END "\033[0m"
 char prompt[9];
-
-#define BUILTIN_COUNT 5
-int f_debug(int c); int f_prompt(int c); int f_status(int c); 
-int f_exit(int c); int f_help(int c);
-char* builtin_cmd_names[] = {"debug", "prompt", "status", "exit", "help"};
-int (*builtin_functions[])(int) = { f_debug, f_prompt, f_status, f_exit, f_help };
 
 int debug_level = 0;
 int status = 0;
@@ -26,6 +19,154 @@ char* tokens[MAX_TOKENS];
 char* input_redirect = NULL;
 char* output_redirect = NULL;
 int background = 0;
+
+// built-in functions :
+//********************************************************************
+int f_debug(int arg_count) {
+    if (arg_count == 1) {
+        printf("%d\n", debug_level);
+        return 0;
+    }
+    if (arg_count == 2) {
+        debug_level = atoi(tokens[1]);
+        return 0;
+    }
+    return 1;
+}
+int f_prompt(int arg_count) {
+    if (arg_count == 1) {
+        printf("%s\n", prompt);
+        return 0;
+    }
+    if (arg_count == 2) {
+        if (strlen(tokens[1]) > 8) {
+            return 1;
+        }
+        strcpy(prompt, tokens[1]);
+        return 0;
+    }
+    return 2;
+}
+int f_status(int arg_count) {
+    if (arg_count == 1) {
+        printf("%d\n", status);
+        return ESCAPE_STATUS;
+    }
+    return 1;
+}
+int f_exit(int arg_count) {
+    if (arg_count == 1) {
+        exit(status);
+    }
+    if (arg_count == 2) {
+        exit(atoi(tokens[1]));
+    }
+    return 1;
+}
+int f_help(int arg_count) {
+    printf("Supported Built-in Commands:\n");
+    printf("> debug [level]\n");
+    printf("   changes the debug_level (default: 0) to the value specified by the argument 'level'\n");
+    printf("   if no argument is provided, it prints the current debug_level\n");
+    printf("> prompt [name]\n");
+    printf("   changes the shell prompt (default: 'mysh') to the value specified by the argument 'name'\n");
+    printf("   the name is limited to 8 characters\n");
+    printf("   if no argument is provided, it prints the current prompt\n");
+    printf("> status\n");
+    printf("   prints the status returned from the previously executed command\n");
+    printf("> exit [status]\n");
+    printf("   exits the shell and returns the value specified by the argument 'status'\n");
+    printf("   if no argument is provided, it returns the status from the previously executed command\n");
+    printf("> help\n");
+    printf("   prints a list of all built-in commands along with their explanations\n");
+    return 0;
+}
+int f_print(int arg_count) {
+    for (int i = 1; i < arg_count; i++) {
+        if (i > 1) printf(" ");
+        printf("%s", tokens[i]);
+    }
+    return 0;
+}
+int f_echo(int arg_count) {
+    f_print(arg_count);
+    printf("\n");
+    return 0;
+}
+int f_len(int arg_count) {
+    int len = 0;
+    for (int i = 1; i < arg_count; i++) {
+        len += strlen(tokens[i]);
+    }
+    printf("%d\n", len);
+    return 0;
+}
+int f_sum(int arg_count) {
+    int sum = 0;
+    for (int i = 1; i < arg_count; i++) {
+        sum += atoi(tokens[i]);
+    }
+    printf("%d\n", sum);
+    return 0;
+}
+int f_calc(int arg_count) {
+    if (arg_count != 4) return 1;
+    char* arg1 = tokens[1];
+    char* op = tokens[2];
+    char* arg2 = tokens[3];
+    if (strcmp(op, "+") == 0) {
+        printf("%d\n", atoi(arg1) + atoi(arg2));
+    }
+    else if (strcmp(op, "-") == 0) {
+        printf("%d\n", atoi(arg1) - atoi(arg2));
+    }
+    else if (strcmp(op, "*") == 0) {
+        printf("%d\n", atoi(arg1) * atoi(arg2));
+    }
+    else if (strcmp(op, "/") == 0) {
+        printf("%d\n", atoi(arg1) / atoi(arg2));
+    }
+    else if (strcmp(op, "%") == 0) {
+        printf("%d\n", atoi(arg1) % atoi(arg2));
+    }
+    else {
+        return 2;
+    }
+    return 0;
+}
+int f_basename(int arg_count) {
+    if (arg_count != 2) return 1;
+    char* last_slash = strrchr(tokens[1], '/');
+    if (last_slash == NULL) {
+        printf("%s\n", tokens[1]);
+    }
+    else {
+        printf("%s\n", last_slash+1);
+    }
+    return 0;
+}
+int f_dirname(int arg_count) {
+    if (arg_count != 2) return 1;
+    char* last_slash = strrchr(tokens[1], '/');
+    if (last_slash == NULL) {
+        printf(".\n");
+    }
+    else if (last_slash == tokens[1]){
+        printf("/\n");
+    }
+    else {
+        *last_slash = '\0';
+        printf("%s\n", tokens[1]);
+    }
+    return 0;
+}
+//********************************************************************
+
+#define BUILTIN_COUNT 12
+char* builtin_cmd_names[] = {"debug", "prompt", "status", "exit", "help", 
+"print", "echo", "len", "sum", "calc", "basename", "dirname"};
+int (*builtin_functions[])(int) = { f_debug, f_prompt, f_status, f_exit, f_help,
+f_print, f_echo, f_len, f_sum, f_calc, f_basename, f_dirname };
 
 void globals_reset() {
     input_redirect = NULL;
@@ -106,65 +247,6 @@ int find_builtin(char* cmd) {
     return -1;
 }
 
-int f_debug(int arg_count) {
-    if (arg_count == 1) {
-        printf("%d\n", debug_level);
-        return 0;
-    }
-    if (arg_count == 2) {
-        debug_level = atoi(tokens[1]);
-        return 0;
-    }
-    return 2;
-}
-int f_prompt(int arg_count) {
-    if (arg_count == 1) {
-        printf("%s\n", prompt);
-        return 0;
-    }
-    if (arg_count == 2) {
-        if (strlen(tokens[1]) > 8) {
-            return 1;
-        }
-        strcpy(prompt, tokens[1]);
-        return 0;
-    }
-    return 2;
-}
-int f_status(int arg_count) {
-    if (arg_count == 1) {
-        printf("%d\n", status);
-        return ESCAPE_STATUS;
-    }
-    return 2;
-}
-int f_exit(int arg_count) {
-    if (arg_count == 1) {
-        exit(status);
-    }
-    if (arg_count == 2) {
-        exit(atoi(tokens[1]));
-    }
-    return 2;
-}
-int f_help(int arg_count) {
-    printf("Supported Built-in Commands:\n");
-    printf("> debug [level]\n");
-    printf("   changes the debug_level (default: 0) to the value specified by the argument 'level'\n");
-    printf("   if no argument is provided, it prints the current debug_level\n");
-    printf("> prompt [name]\n");
-    printf("   changes the shell prompt (default: 'mysh') to the value specified by the argument 'name'\n");
-    printf("   the name is limited to 8 characters\n");
-    printf("   if no argument is provided, it prints the current prompt\n");
-    printf("> status\n");
-    printf("   prints the status returned from the previously executed command\n");
-    printf("> exit [status]\n");
-    printf("   exits the shell and returns the value specified by the argument 'status'\n");
-    printf("   if no argument is provided, it returns the status from the previously executed command\n");
-    printf("> help\n");
-    printf("   prints a list of all built-in commands along with their explanations\n");
-}
-
 int execute_builtin(int index, int arg_count) {
     if (debug_level > 0) {
         printf("Executing builtin '%s' in foreground\n", tokens[0]);
@@ -219,5 +301,5 @@ int main () {
     if(iact) {
         printf("\n");
     }
-    return 0;
+    return status;
 }

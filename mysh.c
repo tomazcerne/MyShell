@@ -3,6 +3,10 @@
 #include <unistd.h>
 #include <ctype.h>
 #include <string.h>
+#include <errno.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <dirent.h>
 
 #define GREEN_START "\033[1;32m"
 #define GREEN_END "\033[0m"
@@ -25,6 +29,7 @@ int background = 0;
 int f_debug(int arg_count) {
     if (arg_count == 1) {
         printf("%d\n", debug_level);
+        fflush(stdout);
         return 0;
     }
     if (arg_count == 2) {
@@ -36,6 +41,7 @@ int f_debug(int arg_count) {
 int f_prompt(int arg_count) {
     if (arg_count == 1) {
         printf("%s\n", prompt);
+        fflush(stdout);
         return 0;
     }
     if (arg_count == 2) {
@@ -50,6 +56,7 @@ int f_prompt(int arg_count) {
 int f_status(int arg_count) {
     if (arg_count == 1) {
         printf("%d\n", status);
+        fflush(stdout);
         return ESCAPE_STATUS;
     }
     return 1;
@@ -79,6 +86,7 @@ int f_help(int arg_count) {
     printf("   if no argument is provided, it returns the status from the previously executed command\n");
     printf("> help\n");
     printf("   prints a list of all built-in commands along with their explanations\n");
+    fflush(stdout);
     return 0;
 }
 int f_print(int arg_count) {
@@ -86,11 +94,13 @@ int f_print(int arg_count) {
         if (i > 1) printf(" ");
         printf("%s", tokens[i]);
     }
+    fflush(stdout);
     return 0;
 }
 int f_echo(int arg_count) {
     f_print(arg_count);
     printf("\n");
+    fflush(stdout);
     return 0;
 }
 int f_len(int arg_count) {
@@ -99,6 +109,7 @@ int f_len(int arg_count) {
         len += strlen(tokens[i]);
     }
     printf("%d\n", len);
+    fflush(stdout);
     return 0;
 }
 int f_sum(int arg_count) {
@@ -107,6 +118,7 @@ int f_sum(int arg_count) {
         sum += atoi(tokens[i]);
     }
     printf("%d\n", sum);
+    fflush(stdout);
     return 0;
 }
 int f_calc(int arg_count) {
@@ -132,6 +144,7 @@ int f_calc(int arg_count) {
     else {
         return 2;
     }
+    fflush(stdout);
     return 0;
 }
 int f_basename(int arg_count) {
@@ -140,9 +153,13 @@ int f_basename(int arg_count) {
     if (last_slash == NULL) {
         printf("%s\n", tokens[1]);
     }
+    else if (strcmp(tokens[1], "/") == 0){
+        printf("/\n");
+    }
     else {
         printf("%s\n", last_slash+1);
     }
+    fflush(stdout);
     return 0;
 }
 int f_dirname(int arg_count) {
@@ -158,15 +175,93 @@ int f_dirname(int arg_count) {
         *last_slash = '\0';
         printf("%s\n", tokens[1]);
     }
+    fflush(stdout);
+    return 0;
+}
+int f_dirch(int arg_count) {
+    if (arg_count > 2) return 1;
+    char* path = (arg_count == 1) ? "/" : tokens[1];
+    if (chdir(path) != 0) {
+        int err = errno;
+        perror("dirch");
+        fflush(stderr);
+        return err;
+    }
+    return 0;
+}
+int f_dirwd(int arg_count) {
+    if (arg_count > 2) return 1;
+    char* mode = (arg_count == 1) ? "base" : tokens[1];
+    char cwd[1024];
+    if (getcwd(cwd, sizeof(cwd)) == NULL) {
+        int err = errno;
+        perror("dirwd");
+        fflush(stderr);
+        return err;
+    }
+    if (strcmp(mode, "base") == 0) {
+        tokens[1] = cwd;
+        return f_basename(2);
+    }
+    else if (strcmp(mode, "full") == 0) {
+        printf("%s\n", cwd);
+        fflush(stdout);
+        return 0;
+    }   
+    return 2;
+}
+int f_dirmk(int arg_count) {
+    if (arg_count != 2) return 1;
+    if (mkdir(tokens[1], 0777) != 0) {
+        int err = errno;
+        perror("dirmk");
+        fflush(stderr);
+        return err;
+    }
+    return 0;
+}
+int f_dirrm(int arg_count) {
+    if (arg_count != 2) return 1;
+    if (rmdir(tokens[1]) != 0) {
+        int err = errno;
+        perror("dirrm");
+        fflush(stderr);
+        return err;
+    }
+    return 0;
+}
+int f_dirls(int arg_count) {
+    if (arg_count > 2) return 1;
+    char* dirname = (arg_count == 1) ? "." : tokens[1];
+    DIR *dir;
+    struct dirent *entry;
+    dir = opendir(dirname);
+    if (dir == NULL) {
+        int err = errno;
+        perror("dirls");
+        fflush(stderr);
+        return err;
+    }
+    int f = 0;
+    while ((entry = readdir(dir)) != NULL) {
+        if (f) printf("  ");
+        f = 1;
+        printf("%s", entry->d_name);
+    }
+    printf("\n");
+    fflush(stdout);
+    closedir(dir);
     return 0;
 }
 //********************************************************************
 
-#define BUILTIN_COUNT 12
+#define BUILTIN_COUNT 17
 char* builtin_cmd_names[] = {"debug", "prompt", "status", "exit", "help", 
-"print", "echo", "len", "sum", "calc", "basename", "dirname"};
+"print", "echo", "len", "sum", "calc", "basename", "dirname",
+"dirch", "dirwd", "dirmk", "dirrm", "dirls"};
 int (*builtin_functions[])(int) = { f_debug, f_prompt, f_status, f_exit, f_help,
-f_print, f_echo, f_len, f_sum, f_calc, f_basename, f_dirname };
+f_print, f_echo, f_len, f_sum, f_calc, f_basename, f_dirname, 
+f_dirch, f_dirwd, f_dirmk, f_dirrm, f_dirls };
 
 void globals_reset() {
     input_redirect = NULL;
@@ -220,6 +315,7 @@ void debug_print(int tkns) {
     if (background) {
         printf("Background: 1\n");
     }
+    fflush(stdout);
 }
 
 int parse_tokens(int tokens_count) {
@@ -250,6 +346,7 @@ int find_builtin(char* cmd) {
 int execute_builtin(int index, int arg_count) {
     if (debug_level > 0) {
         printf("Executing builtin '%s' in foreground\n", tokens[0]);
+        fflush(stdout);
     }
     return builtin_functions[index](arg_count);
 }
@@ -261,6 +358,7 @@ int execute_external(int arg_count) {
         printf("%s", tokens[i]);
     }
     printf("'\n");
+    fflush(stdout);
     return 0;
 }
 
@@ -269,13 +367,17 @@ int main () {
     int iact = (isatty(STDIN_FILENO)) ? 1 : 0;
     if(iact) {
         printf("%s%s> %s", GREEN_START, prompt, GREEN_END);
+        fflush(stdout);
     }
     while (fgets(line, LINE_SIZE, stdin) != NULL ) {
         int len = strlen(line);
         if (line[len-1] == '\n') {
             line[len-1] = '\0';
         }
-        if (debug_level > 0) printf("Input line: '%s'\n", line);
+        if (debug_level > 0) {
+            printf("Input line: '%s'\n", line);
+            fflush(stdout);
+        }
         int tokens_count = tokenize(line);
         if (tokens_count > 0) {
             int arg_count = parse_tokens(tokens_count);
@@ -295,11 +397,13 @@ int main () {
         }
         if(iact) {
             printf("%s%s> %s", GREEN_START, prompt, GREEN_END);
+            fflush(stdout);
         }
         globals_reset();
     }
     if(iact) {
         printf("\n");
+        fflush(stdout);
     }
     return status;
 }

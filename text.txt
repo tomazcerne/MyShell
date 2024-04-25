@@ -1,20 +1,19 @@
-dirch
-dirwd full
+dirmk test
+dirch test
 dirwd base
-dirwd
 
-echo
-dirch /usr/bin
-dirwd full
-dirwd base
-dirwd
-
-echo
-dirch .././../usr/
-dirwd full
-dirwd base
-dirwd
-
-echo
-dirch /going/nowhere
+cpcat /etc/hostname hostname
 status
+cpcat hostname
+status
+
+cpcat /etc/fstab fstab
+status
+cpcat fstab
+status
+
+cpcat /etc/nowhere here
+status
+
+unlink hostname
+unlink fstab

@@ -7,6 +7,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <dirent.h>
+#include <fcntl.h>
 
 #define GREEN_START "\033[1;32m"
 #define GREEN_END "\033[0m"
@@ -253,15 +254,163 @@ int f_dirls(int arg_count) {
     closedir(dir);
     return 0;
 }
+int f_rename(int arg_count) {
+    if (arg_count != 3) return 1;
+    if (rename(tokens[1], tokens[2]) != 0) {
+        int err = errno;
+        perror("rename");
+        fflush(stderr);
+        return err;
+    }
+    return 0;
+}
+int f_unlink(int arg_count) {
+    if (arg_count != 2) return 1;
+    if (unlink(tokens[1]) != 0) {
+        int err = errno;
+        perror("unlink");
+        fflush(stderr);
+        return err;
+    }
+    return 0;
+}
+int f_remove(int arg_count) {
+    if (arg_count != 2) return 1;
+    if (remove(tokens[1]) != 0) {
+        int err = errno;
+        perror("remove");
+        fflush(stderr);
+        return err;
+    }
+    return 0;
+}
+int f_linkhard(int arg_count) {
+    if (arg_count != 3) return 1;
+    if (link(tokens[1], tokens[2]) != 0) {
+        int err = errno;
+        perror("linkhard");
+        fflush(stderr);
+        return err;
+    }
+    return 0;
+}
+int f_linksoft(int arg_count) {
+    if (arg_count != 3) return 1;
+    if (symlink(tokens[1], tokens[2]) != 0) {
+        int err = errno;
+        perror("linksoft");
+        fflush(stderr);
+        return err;
+    }
+    return 0;
+}
+int f_linkread(int arg_count) {
+    if (arg_count != 2) return 1;
+    char target[1024];
+    int len = readlink(tokens[1], target, sizeof(target)-1);
+    if (len == -1) {
+        int err = errno;
+        perror("linkread");
+        fflush(stderr);
+        return err;
+    }
+    target[len] = '\0';
+    printf("%s\n", target);
+    fflush(stdout);
+    return 0;
+}
+int f_linklist(int arg_count) {
+    if (arg_count != 2) return 1;
+    DIR *dir;
+    struct dirent *entry;
+    dir = opendir(".");
+    if (dir == NULL) {
+        int err = errno;
+        perror("linklist");
+        fflush(stderr);
+        return err;
+    }
+    int inode = -1;
+    while ((entry = readdir(dir)) != NULL) {
+        if (strcmp(tokens[1], entry->d_name) == 0) {
+            inode = entry->d_ino;
+            break;
+        }
+    }
+    if (inode == -1) return 2;
+    closedir(dir);
+
+    dir = opendir(".");
+    if (dir == NULL) {
+        int err = errno;
+        perror("linklist");
+        fflush(stderr);
+        return err;
+    }
+    int f = 0;
+    while ((entry = readdir(dir)) != NULL) {
+        if (inode == entry->d_ino) {
+            if (f) printf("  ");
+            f = 1;
+            printf("%s", entry->d_name);
+        }  
+    }
+    closedir(dir);
+    printf("\n");
+    fflush(stdout);
+    return 0;
+}
+int f_cpcat(int arg_count) {
+    if (arg_count > 3) return 1;
+    int fd_in = (arg_count < 2 || tokens[1][0] == '-') ? 0 :
+        open(tokens[1], O_RDONLY);
+    if (fd_in < 0) {
+        int err = errno;
+        perror("cpcat");
+        fflush(stderr);
+        return err;
+    }
+    int fd_out = (arg_count < 3) ? 1 : open(tokens[2], O_CREAT | O_WRONLY | O_TRUNC, 0777);
+    if (fd_out < 0) {
+        int err = errno;
+        perror("cpcat");
+        fflush(stderr);
+        return err;
+    }
+
+    char buffer[1024];
+    int size = 1;
+    while (size > 0) {
+        size = read(fd_in, buffer, sizeof(buffer));
+        if (size < 0) {
+            int err = errno;
+            perror("cpcat");
+            fflush(stderr);
+            return err;
+        }
+        int wr = write(fd_out, buffer, size);
+        if (wr < 0) {
+            int err = errno;
+            perror("cpcat");
+            fflush(stderr);
+            return err;
+        }
+    }
+    if (fd_in > 0) close(fd_in);
+    if (fd_out > 1) close(fd_out);
+    return 0;
+}
 //********************************************************************
 
-#define BUILTIN_COUNT 17
+#define BUILTIN_COUNT 25
 char* builtin_cmd_names[] = {"debug", "prompt", "status", "exit", "help", 
 "print", "echo", "len", "sum", "calc", "basename", "dirname",
-"dirch", "dirwd", "dirmk", "dirrm", "dirls"};
+"dirch", "dirwd", "dirmk", "dirrm", "dirls",
+"rename", "unlink", "remove", "linkhard", "linksoft", "linkread", "linklist", "cpcat"};
 int (*builtin_functions[])(int) = { f_debug, f_prompt, f_status, f_exit, f_help,
 f_print, f_echo, f_len, f_sum, f_calc, f_basename, f_dirname, 
-f_dirch, f_dirwd, f_dirmk, f_dirrm, f_dirls };
+f_dirch, f_dirwd, f_dirmk, f_dirrm, f_dirls, 
+f_rename, f_unlink, f_remove, f_linkhard, f_linksoft, f_linkread, f_linklist, f_cpcat};
 
 void globals_reset() {
     input_redirect = NULL;

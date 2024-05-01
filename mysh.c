@@ -8,6 +8,7 @@
 #include <sys/types.h>
 #include <dirent.h>
 #include <fcntl.h>
+#include <sys/utsname.h>
 
 #define GREEN_START "\033[1;32m"
 #define GREEN_END "\033[0m"
@@ -16,6 +17,7 @@ char prompt[9];
 int debug_level = 0;
 int status = 0;
 #define ESCAPE_STATUS -1
+char procfs_path[128];
 
 #define LINE_SIZE 1024
 #define MAX_TOKENS 32
@@ -400,17 +402,172 @@ int f_cpcat(int arg_count) {
     if (fd_out > 1) close(fd_out);
     return 0;
 }
+int f_pid(int arg_count) {
+    if (arg_count != 1) return 1;
+    printf("%d\n", getpid());
+    fflush(stdout);
+    return 0;
+}
+int f_ppid(int arg_count) {
+    if (arg_count != 1) return 1;
+    printf("%d\n", getppid());
+    fflush(stdout);
+    return 0;
+}
+int f_uid(int arg_count) {
+    if (arg_count != 1) return 1;
+    printf("%d\n", getuid());
+    fflush(stdout);
+    return 0;
+}
+int f_euid(int arg_count) {
+    if (arg_count != 1) return 1;
+    printf("%d\n", geteuid());
+    fflush(stdout);
+    return 0;
+}
+int f_gid(int arg_count) {
+    if (arg_count != 1) return 1;
+    printf("%d\n", getgid());
+    fflush(stdout);
+    return 0;
+}
+int f_egid(int arg_count) {
+    if (arg_count != 1) return 1;
+    printf("%d\n", getegid());
+    fflush(stdout);
+    return 0;
+}
+int f_sysinfo(int arg_count) {
+    if (arg_count != 1) return 1;
+    struct utsname sys_info;
+    uname(&sys_info);
+    printf("Sysname: %s\n", sys_info.sysname);
+    printf("Nodename: %s\n", sys_info.nodename);
+    printf("Release: %s\n", sys_info.release);
+    printf("Version: %s\n", sys_info.version);
+    printf("Machine: %s\n", sys_info.machine);
+    fflush(stdout);
+    return 0;
+}
+int f_proc(int arg_count) {
+    if (arg_count > 2) return 2;
+    if (arg_count == 1) {
+        printf("%s\n", procfs_path);
+        fflush(stdout);
+        return 0;
+    }
+    if (access(tokens[1], F_OK | R_OK) != 0) {
+        return 1;
+    }
+    strcpy(procfs_path, tokens[1]);
+    return 0;
+}
+int cmp(const void* a, const void* b) {
+    return *(int*)a - *(int*)b;
+}
+int* getpids(int* cnt) {
+    int count = 0;
+    int* pid_list = NULL;
+    DIR *dir;
+    struct dirent *entry;
+    dir = opendir(procfs_path);
+    if (dir == NULL) {
+        return NULL;
+    }
+    while ((entry = readdir(dir)) != NULL) {
+        int pid = atoi(entry->d_name);
+        if (pid > 0) {
+            count++;
+            pid_list = realloc(pid_list, count * sizeof(int));
+            pid_list[count - 1] = pid;
+        }
+    }
+    closedir(dir);
+    qsort(pid_list, count, sizeof(int), cmp);
+    *cnt = count;
+    return pid_list;
+}
+int f_pids(int arg_count) {
+    if (arg_count != 1) return 1;
+    int count = 0;
+    int* pidlist = getpids(&count);
+    if (pidlist == NULL) {
+        return 2;
+    }
+    for (int i = 0; i < count; i++) {
+        printf("%d\n", pidlist[i]);
+    }
+    fflush(stdout);
+    free(pidlist);
+    return 0;
+}
+int f_pinfo(int arg_count) {
+    if (arg_count != 1) return 1;
+    int count = 0;
+    int* pidlist = getpids(&count);
+    if (pidlist == NULL) {
+        return 2;
+    }
+    printf("%5s %5s %6s %s\n", "PID", "PPID", "STANJE", "IME");
+    for (int i = 0; i < count; i++) {
+        char path[1024];
+        sprintf(path, "%s/%d/stat", procfs_path, pidlist[i]);
+        FILE* file = fopen(path, "r");
+        if (file == NULL) {
+            int err = errno;
+            perror("pinfo");
+            fflush(stderr);
+            return err;
+        }
+        char pid[64];
+        char ppid[64];
+        char state[64];
+        char name[1024];
+        fscanf(file, "%s", pid);
+        char ch;
+        int in = 0, cnt = 0;
+        while ((ch = fgetc(file)) != EOF) {
+            if (ch == '(') {
+                in++;
+                if (in == 1) {
+                    continue;
+                }  
+            }
+            if (in) {
+                name[cnt++] = ch;
+            }
+            if (ch == ')') {
+                in--;
+                if (in == 0) {
+                    name[--cnt] = '\0';
+                    break;
+                }
+            }
+        }
+        fscanf(file, "%s %s", state, ppid);
+        fclose(file);
+        printf("%5s %5s %6s %s\n", pid, ppid, state, name);
+    }
+    fflush(stdout);
+    free(pidlist);
+    return 0;
+}
 //********************************************************************
 
-#define BUILTIN_COUNT 25
+#define BUILTIN_COUNT 35
 char* builtin_cmd_names[] = {"debug", "prompt", "status", "exit", "help", 
 "print", "echo", "len", "sum", "calc", "basename", "dirname",
 "dirch", "dirwd", "dirmk", "dirrm", "dirls",
-"rename", "unlink", "remove", "linkhard", "linksoft", "linkread", "linklist", "cpcat"};
+"rename", "unlink", "remove", "linkhard", "linksoft", "linkread", "linklist", "cpcat",
+"pid", "ppid", "uid", "euid", "gid", "egid", "sysinfo",
+"proc", "pids", "pinfo"};
 int (*builtin_functions[])(int) = { f_debug, f_prompt, f_status, f_exit, f_help,
 f_print, f_echo, f_len, f_sum, f_calc, f_basename, f_dirname, 
 f_dirch, f_dirwd, f_dirmk, f_dirrm, f_dirls, 
-f_rename, f_unlink, f_remove, f_linkhard, f_linksoft, f_linkread, f_linklist, f_cpcat};
+f_rename, f_unlink, f_remove, f_linkhard, f_linksoft, f_linkread, f_linklist, f_cpcat,
+f_pid, f_ppid, f_uid, f_euid, f_gid, f_egid, f_sysinfo,
+f_proc, f_pids, f_pinfo};
 
 void globals_reset() {
     input_redirect = NULL;
@@ -513,6 +670,7 @@ int execute_external(int arg_count) {
 
 int main () {
     strcpy(prompt, "mysh");
+    strcpy(procfs_path, "/proc");
     int iact = (isatty(STDIN_FILENO)) ? 1 : 0;
     if(iact) {
         printf("%s%s> %s", GREEN_START, prompt, GREEN_END);

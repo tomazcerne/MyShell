@@ -9,6 +9,7 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <sys/utsname.h>
+#include <sys/wait.h>
 
 #define GREEN_START "\033[1;32m"
 #define GREEN_END "\033[0m"
@@ -658,14 +659,29 @@ int execute_builtin(int index, int arg_count) {
 }
 
 int execute_external(int arg_count) {
-    printf("External command '");
-    for (int i = 0; i < arg_count; i++) {
-        if (i>0) printf(" ");
-        printf("%s", tokens[i]);
+    fflush(stdin);
+    int pid = fork();
+    if (pid == 0) {
+        tokens[arg_count] = NULL;
+        execvp(tokens[0], tokens);
+        perror("exec");
+        fflush(stderr);
+        return 127;
     }
-    printf("'\n");
-    fflush(stdout);
-    return 0;
+    else if (pid > 0) {
+        if (background == 0) {
+            int stat;
+            waitpid(pid, &stat, 0);
+            if (WIFEXITED(stat)) {
+                return WEXITSTATUS(stat);
+            }
+            return 2;
+        }
+        return ESCAPE_STATUS;
+    }
+    else {
+        return 1;
+    }
 }
 
 int main () {

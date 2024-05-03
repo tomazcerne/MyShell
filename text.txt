@@ -1,19 +1,8 @@
-dirmk test
-dirch test
-dirwd base
 
-cpcat /etc/hostname hostname
-status
-cpcat hostname
-status
 
-cpcat /etc/fstab fstab
+echo zacetek
+exit 42 &
+waitone
 status
-cpcat fstab
-status
+echo konec
 
-cpcat /etc/nowhere here
-status
-
-unlink hostname
-unlink fstab

@@ -10,6 +10,7 @@
 #include <fcntl.h>
 #include <sys/utsname.h>
 #include <sys/wait.h>
+#include <signal.h>
 
 #define GREEN_START "\033[1;32m"
 #define GREEN_END "\033[0m"
@@ -554,21 +555,53 @@ int f_pinfo(int arg_count) {
     free(pidlist);
     return 0;
 }
+int f_waitone(int arg_count) {
+    if (arg_count > 2) return 1;
+    int pid = -1;
+    if (arg_count == 2) {
+        pid = atoi(tokens[1]);
+    }
+    int stat;
+    if (waitpid(pid, &stat, 0) > 0) {
+        if (WIFEXITED(stat)) {
+            return WEXITSTATUS(stat);
+        }
+        return 2;
+    }
+    return 0;
+}
+int f_waitall(int arg_count) {
+    if (arg_count != 1) return 1;
+    int pid = 1;
+    while (pid > 0) {
+        pid = waitpid (-1, NULL, 0);
+    }
+    return 0;
+}
 //********************************************************************
 
-#define BUILTIN_COUNT 35
+#define BUILTIN_COUNT 37
 char* builtin_cmd_names[] = {"debug", "prompt", "status", "exit", "help", 
 "print", "echo", "len", "sum", "calc", "basename", "dirname",
 "dirch", "dirwd", "dirmk", "dirrm", "dirls",
 "rename", "unlink", "remove", "linkhard", "linksoft", "linkread", "linklist", "cpcat",
 "pid", "ppid", "uid", "euid", "gid", "egid", "sysinfo",
-"proc", "pids", "pinfo"};
+"proc", "pids", "pinfo",
+"waitone", "waitall"};
 int (*builtin_functions[])(int) = { f_debug, f_prompt, f_status, f_exit, f_help,
 f_print, f_echo, f_len, f_sum, f_calc, f_basename, f_dirname, 
 f_dirch, f_dirwd, f_dirmk, f_dirrm, f_dirls, 
 f_rename, f_unlink, f_remove, f_linkhard, f_linksoft, f_linkread, f_linklist, f_cpcat,
 f_pid, f_ppid, f_uid, f_euid, f_gid, f_egid, f_sysinfo,
-f_proc, f_pids, f_pinfo};
+f_proc, f_pids, f_pinfo,
+f_waitone, f_waitall};
+
+void sigchld_handler(int signum) {
+    int pid = 1;
+    while (pid > 0) {
+        pid = waitpid (-1, NULL, WNOHANG);
+    }
+}
 
 void globals_reset() {
     input_redirect = NULL;
@@ -651,11 +684,31 @@ int find_builtin(char* cmd) {
 }
 
 int execute_builtin(int index, int arg_count) {
-    if (debug_level > 0) {
-        printf("Executing builtin '%s' in foreground\n", tokens[0]);
-        fflush(stdout);
+    if (background) {
+        fflush(stdin);
+        if (debug_level > 0) {
+            printf("Executing builtin '%s' in background\n", tokens[0]);
+            fflush(stdout);
+        }
+        int pid = fork();
+        if (pid == 0) {
+            int stat = builtin_functions[index](arg_count);
+            exit(stat);
+        }
+        else if (pid > 0) {
+            return ESCAPE_STATUS;
+        }
+        else {
+            return 1;
+        }
     }
-    return builtin_functions[index](arg_count);
+    else {
+        if (debug_level > 0) {
+            printf("Executing builtin '%s' in foreground\n", tokens[0]);
+            fflush(stdout);
+        }
+        return builtin_functions[index](arg_count);
+    }
 }
 
 int execute_external(int arg_count) {
@@ -666,7 +719,7 @@ int execute_external(int arg_count) {
         execvp(tokens[0], tokens);
         perror("exec");
         fflush(stderr);
-        return 127;
+        exit(127);
     }
     else if (pid > 0) {
         if (background == 0) {
@@ -687,6 +740,7 @@ int execute_external(int arg_count) {
 int main () {
     strcpy(prompt, "mysh");
     strcpy(procfs_path, "/proc");
+    signal(SIGCHLD, sigchld_handler);
     int iact = (isatty(STDIN_FILENO)) ? 1 : 0;
     if(iact) {
         printf("%s%s> %s", GREEN_START, prompt, GREEN_END);

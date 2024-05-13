@@ -26,7 +26,9 @@ char procfs_path[128];
 char line[LINE_SIZE];
 char* tokens[MAX_TOKENS];
 char* input_redirect = NULL;
+int fd_in;
 char* output_redirect = NULL;
+int fd_out;
 int background = 0;
 
 // built-in functions :
@@ -605,7 +607,9 @@ void sigchld_handler(int signum) {
 
 void globals_reset() {
     input_redirect = NULL;
+    fd_in = 0;
     output_redirect = NULL;
+    fd_out = 1;
     background = 0;
 }
 
@@ -685,13 +689,16 @@ int find_builtin(char* cmd) {
 
 int execute_builtin(int index, int arg_count) {
     if (background) {
-        fflush(stdin);
         if (debug_level > 0) {
             printf("Executing builtin '%s' in background\n", tokens[0]);
             fflush(stdout);
         }
+        fflush(stdin);
         int pid = fork();
         if (pid == 0) {
+            fflush(stdin); fflush(stdout);
+            if (input_redirect) dup2(fd_in, 0);
+            if (output_redirect) dup2(fd_out, 1);
             int stat = builtin_functions[index](arg_count);
             exit(stat);
         }
@@ -703,18 +710,38 @@ int execute_builtin(int index, int arg_count) {
         }
     }
     else {
+        int std_in, std_out;
+        if (input_redirect) {
+            std_in = dup(0);
+            dup2(fd_in, 0);
+        }
+        if (output_redirect) {
+            std_out = dup(1);
+            dup2(fd_out, 1);
+        }
         if (debug_level > 0) {
             printf("Executing builtin '%s' in foreground\n", tokens[0]);
             fflush(stdout);
         }
-        return builtin_functions[index](arg_count);
+        int stat = builtin_functions[index](arg_count);
+        if (input_redirect) dup2(std_in, 0);
+        if (output_redirect) dup2(std_out, 1);
+        return stat;
     }
 }
 
 int execute_external(int arg_count) {
+    if (debug_level > 0) {
+        char* fgbg = (background) ? "background" : "foreground";
+        printf("Executing external '%s' in %s\n", tokens[0], fgbg);
+        fflush(stdout);
+    }
     fflush(stdin);
     int pid = fork();
     if (pid == 0) {
+        fflush(stdin); fflush(stdout);
+        if (input_redirect) dup2(fd_in, 0);
+        if (output_redirect) dup2(fd_out, 1);
         tokens[arg_count] = NULL;
         execvp(tokens[0], tokens);
         perror("exec");
@@ -736,6 +763,42 @@ int execute_external(int arg_count) {
         return 1;
     }
 }
+int execute(char *line) {
+    int tokens_count = tokenize(line);
+    if (tokens_count <= 0) return ESCAPE_STATUS;
+
+    int arg_count = parse_tokens(tokens_count);
+    if (debug_level > 0) debug_print(tokens_count);
+    int builtin_index = find_builtin(tokens[0]);
+
+    if (input_redirect) {
+        fd_in = open(input_redirect, O_RDONLY);
+        if (fd_in < 0) {
+            perror("opening input file");
+            fflush(stderr);
+            return ESCAPE_STATUS;
+        }
+    }
+    if (output_redirect) {
+        fd_out = open(output_redirect, O_CREAT | O_WRONLY | O_TRUNC, 0777);
+        if (fd_out < 0) {
+            perror("opening output file");
+            fflush(stderr);
+            return ESCAPE_STATUS;
+        }
+    }
+    int stat;
+    if (builtin_index >= 0) {
+        stat = execute_builtin(builtin_index, arg_count);
+    }
+    else {
+        stat = execute_external(arg_count);
+    }
+    if (input_redirect) close(fd_in);
+    if (output_redirect) close(fd_out);
+    globals_reset();
+    return stat;
+}
 
 int main () {
     strcpy(prompt, "mysh");
@@ -755,28 +818,12 @@ int main () {
             printf("Input line: '%s'\n", line);
             fflush(stdout);
         }
-        int tokens_count = tokenize(line);
-        if (tokens_count > 0) {
-            int arg_count = parse_tokens(tokens_count);
-            if (debug_level > 0) debug_print(tokens_count);
-            int builtin_index = find_builtin(tokens[0]);
-            int s;
-            if (builtin_index >= 0) {
-                s = execute_builtin(builtin_index, arg_count);
-            }
-            else {
-                s = execute_external(arg_count);
-            }
-            status = (s == ESCAPE_STATUS) ? status : s;
-            if (s > 0) {
-                //printf("napaka: %d\n", status);
-            }
-        }
+        int s = execute(line);
+        status = (s == ESCAPE_STATUS) ? status : s;
         if(iact) {
             printf("%s%s> %s", GREEN_START, prompt, GREEN_END);
             fflush(stdout);
         }
-        globals_reset();
     }
     if(iact) {
         printf("\n");

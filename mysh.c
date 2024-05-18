@@ -580,23 +580,80 @@ int f_waitall(int arg_count) {
     }
     return 0;
 }
+void pipe_execute(int* fds_in, int* fds_out, char* line);
+int f_pipes(int arg_count) {
+    if (arg_count < 3) return 1;
+    char line[LINE_SIZE];
+    int fds_in[2]; int* in;
+    int fds_out[2]; int *out;
+    for (int i = 1; i < arg_count; i++) {
+        strcpy(line, tokens[i]);
+        fds_in[0] = fds_out[0];
+        fds_in[1] = fds_out[1];
+        if (i + 1 < arg_count) pipe(fds_out);
+        in = (i == 1) ? NULL : fds_in;
+        out = (i + 1 == arg_count) ? NULL : fds_out;
+        pipe_execute(in, out, line);
+        if (i > 1) {
+            close(fds_in[0]);
+            close(fds_in[1]);
+        }
+    }
+    for (int i = 1; i < arg_count; i++) {
+        wait(NULL);
+    }
+    fflush(stdout);
+    return 0;
+}
 //********************************************************************
 
-#define BUILTIN_COUNT 37
+#define BUILTIN_COUNT 38
 char* builtin_cmd_names[] = {"debug", "prompt", "status", "exit", "help", 
 "print", "echo", "len", "sum", "calc", "basename", "dirname",
 "dirch", "dirwd", "dirmk", "dirrm", "dirls",
 "rename", "unlink", "remove", "linkhard", "linksoft", "linkread", "linklist", "cpcat",
 "pid", "ppid", "uid", "euid", "gid", "egid", "sysinfo",
 "proc", "pids", "pinfo",
-"waitone", "waitall"};
+"waitone", "waitall",
+"pipes"};
 int (*builtin_functions[])(int) = { f_debug, f_prompt, f_status, f_exit, f_help,
 f_print, f_echo, f_len, f_sum, f_calc, f_basename, f_dirname, 
 f_dirch, f_dirwd, f_dirmk, f_dirrm, f_dirls, 
 f_rename, f_unlink, f_remove, f_linkhard, f_linksoft, f_linkread, f_linklist, f_cpcat,
 f_pid, f_ppid, f_uid, f_euid, f_gid, f_egid, f_sysinfo,
 f_proc, f_pids, f_pinfo,
-f_waitone, f_waitall};
+f_waitone, f_waitall,
+f_pipes};
+
+int tokenize(char* l);
+int find_builtin(char* cmd);
+void pipe_execute(int* fds_in, int* fds_out, char* line) {
+    fflush(stdin); fflush(stdout);
+    if (!fork()) {
+        if (fds_in) {
+            dup2(fds_in[0], 0);
+            close(fds_in[0]);
+            close(fds_in[1]);
+        }
+        if (fds_out) {
+            dup2(fds_out[1], 1);
+            close(fds_out[0]);
+            close(fds_out[1]);
+        }
+        int count = tokenize(line);
+        int index = find_builtin(tokens[0]);
+        if (index >= 0) {
+            exit(builtin_functions[index](count));
+        }
+        else {
+            tokens[count] = NULL;
+            execvp(tokens[0], tokens);
+            perror("exec");
+            fflush(stderr);
+            exit(127);
+        }
+    }
+}
 
 void sigchld_handler(int signum) {
     int pid = 1;
@@ -643,6 +700,7 @@ int tokenize(char* l) {
     if (current != NULL) {
         tokens[tkns++] = current;
     }
+    tokens[tkns] = NULL;
     return tkns;
 }
 

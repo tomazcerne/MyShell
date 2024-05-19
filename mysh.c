@@ -24,12 +24,18 @@ char procfs_path[128];
 #define LINE_SIZE 1024
 #define MAX_TOKENS 32
 char line[LINE_SIZE];
+char subsh_line[LINE_SIZE];
 char* tokens[MAX_TOKENS];
 char* input_redirect = NULL;
 int fd_in;
 char* output_redirect = NULL;
 int fd_out;
 int background = 0;
+
+#define MAX_VAR 1024
+char* var_names[MAX_VAR];
+char* var_values[MAX_VAR];
+int var_count = 0;
 
 // built-in functions :
 //********************************************************************
@@ -605,9 +611,42 @@ int f_pipes(int arg_count) {
     fflush(stdout);
     return 0;
 }
+int find_var(char* name) {
+    for (int i = 0; i < var_count; i++) {
+        if (strcmp(name, var_names[i]) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+int f_set(int arg_count) {
+    if (arg_count != 3) return 1;
+    int var_index = find_var(tokens[1]);
+    if (var_index == -1) {
+        var_index = var_count++;
+        var_names[var_index] = malloc((strlen(tokens[1])+1) * sizeof(char));
+        strcpy(var_names[var_index], tokens[1]);
+    }
+    free(var_values[var_index]);
+    var_values[var_index] = malloc((strlen(tokens[2])+1) * sizeof(char));
+    strcpy(var_values[var_index], tokens[2]);
+    return 0;
+}
+int f_get(int arg_count) {
+    if (arg_count != 2) return 1;
+    int var_index = find_var(tokens[1]);
+    if (var_index < 0) {
+        fprintf(stderr, "Variable '%s' does not exist\n", tokens[1]);
+        fflush(stderr);
+        return 2;
+    }
+    printf("%s\n", var_values[var_index]);
+    fflush(stdout);
+    return 0;
+}
 //********************************************************************
 
-#define BUILTIN_COUNT 38
+#define BUILTIN_COUNT 40
 char* builtin_cmd_names[] = {"debug", "prompt", "status", "exit", "help", 
 "print", "echo", "len", "sum", "calc", "basename", "dirname",
 "dirch", "dirwd", "dirmk", "dirrm", "dirls",
@@ -615,7 +654,8 @@ char* builtin_cmd_names[] = {"debug", "prompt", "status", "exit", "help",
 "pid", "ppid", "uid", "euid", "gid", "egid", "sysinfo",
 "proc", "pids", "pinfo",
 "waitone", "waitall",
-"pipes"};
+"pipes",
+"set", "get"};
 int (*builtin_functions[])(int) = { f_debug, f_prompt, f_status, f_exit, f_help,
 f_print, f_echo, f_len, f_sum, f_calc, f_basename, f_dirname, 
 f_dirch, f_dirwd, f_dirmk, f_dirrm, f_dirls, 
@@ -623,7 +663,8 @@ f_rename, f_unlink, f_remove, f_linkhard, f_linksoft, f_linkread, f_linklist, f_
 f_pid, f_ppid, f_uid, f_euid, f_gid, f_egid, f_sysinfo,
 f_proc, f_pids, f_pinfo,
 f_waitone, f_waitall,
-f_pipes};
+f_pipes,
+f_set, f_get};
 
 int tokenize(char* l);
 int find_builtin(char* cmd);
@@ -700,7 +741,6 @@ int tokenize(char* l) {
     if (current != NULL) {
         tokens[tkns++] = current;
     }
-    tokens[tkns] = NULL;
     return tkns;
 }
 
@@ -821,7 +861,93 @@ int execute_external(int arg_count) {
         return 1;
     }
 }
-int execute(char *line) {
+
+void insert_subsh(char* start, int len, int n) {
+    char temp[LINE_SIZE];
+    strcpy(temp, (start + len));
+    strcpy(start, subsh_line);
+    strcpy((start + n), temp);
+}
+
+int parse_subsh();
+int execute_subsh(char* start, int len) {
+    int fdsub[2];
+    pipe(fdsub);
+    fflush(stdin); fflush(stdout);
+    int pid = fork();
+    if (pid == 0) {
+        dup2(fdsub[1], 1);
+        close(fdsub[0]); close(fdsub[1]);
+        strcpy(line, subsh_line);
+        int stat = parse_subsh();
+        if (stat > 0) exit(stat);
+        int count = tokenize(line);
+        int index = find_builtin(tokens[0]);
+        if (index >= 0) {
+            int st = builtin_functions[index](count);
+            exit((st == ESCAPE_STATUS ? status : st));
+        }
+        else {
+            tokens[count] = NULL;
+            execvp(tokens[0], tokens);
+            perror("exec");
+            fflush(stderr);
+            exit(127);
+        }
+    }
+    close(fdsub[1]);
+    int n = read(fdsub[0], subsh_line, LINE_SIZE - 1);
+    if (n < 0) {
+        perror("read");
+        fflush(stderr);
+        return 1;
+    }
+    subsh_line[n] = '\0';
+    if (n > 0 && subsh_line[n-1] == '\n') subsh_line[--n] = '\0';
+    insert_subsh(start, len, n);
+    int stat;
+    waitpid(pid, &stat, 0);
+    if (WIFEXITED(stat)) {
+        return WEXITSTATUS(stat);
+    }
+    return 2;
+}
+int parse_subsh() {
+    char* l = line;
+    char* start = NULL;
+    char prev = '\0';
+    int in = 0, cnt = 0;
+    while (*l != '\0') {
+        if ((in || prev == '$') && *l == '(') {
+            in++;
+            if (in == 1) {
+                start = l;
+                prev = *l;
+                l++;
+                continue;
+            }  
+        }
+        if (in) {
+            subsh_line[cnt++] = *l;
+        }
+        if (in && *l == ')') {
+            in--;
+            if (in == 0) {
+                subsh_line[--cnt] = '\0';
+                int stat = execute_subsh(start-1, cnt+3);
+                return (stat > 0) ? stat : parse_subsh();
+            }
+        }
+        prev = *l;
+        l++;
+    }
+    //printf("%d %s\n", cnt, subsh_line);
+    return 0;
+}
+int execute_cmd() {
+    int subsh_stat = parse_subsh();
+    if (subsh_stat > 0) return subsh_stat;
+
     int tokens_count = tokenize(line);
     if (tokens_count <= 0) return ESCAPE_STATUS;
 
@@ -876,7 +1002,7 @@ int main () {
             printf("Input line: '%s'\n", line);
             fflush(stdout);
         }
-        int s = execute(line);
+        int s = execute_cmd();
         status = (s == ESCAPE_STATUS) ? status : s;
         if(iact) {
             printf("%s%s> %s", GREEN_START, prompt, GREEN_END);

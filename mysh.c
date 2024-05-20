@@ -644,9 +644,115 @@ int f_get(int arg_count) {
     fflush(stdout);
     return 0;
 }
+int f_lt(int arg_count) {
+    if (arg_count != 3) return 1;
+    if (atoi(tokens[1]) < atoi(tokens[2]))
+        printf("true\n");
+    else
+        printf("false\n");
+    fflush(stdout);
+    return 0;
+}
+int f_le(int arg_count) {
+    if (arg_count != 3) return 1;
+    if (atoi(tokens[1]) <= atoi(tokens[2]))
+        printf("true\n");
+    else
+        printf("false\n");
+    fflush(stdout);
+    return 0;
+}
+int f_eq(int arg_count) {
+    if (arg_count != 3) return 1;
+    if (strcmp(tokens[1], tokens[2]) == 0)
+        printf("true\n");
+    else
+        printf("false\n");
+    fflush(stdout);
+    return 0;
+}
+int f_and(int arg_count) {
+    if (arg_count < 3) return 1;
+    for (int i = 1; i < arg_count; i++) {
+        if (strcmp(tokens[i], "false") == 0) {
+            printf("false\n");
+            fflush(stdout);
+            return 0;
+        }
+    }
+    printf("true\n");
+    fflush(stdout);
+    return 0;
+}
+int f_or(int arg_count) {
+    if (arg_count < 3) return 1;
+    for (int i = 1; i < arg_count; i++) {
+        if (strcmp(tokens[i], "true") == 0) {
+            printf("true\n");
+            fflush(stdout);
+            return 0;
+        }
+    }
+    printf("false\n");
+    fflush(stdout);
+    return 0;
+}
+int f_not(int arg_count) {
+    if (arg_count != 2) return 1;
+    if (strcmp(tokens[1], "false") == 0)
+        printf("true\n");
+    else
+        printf("false\n");
+    fflush(stdout);
+    return 0;
+}
+int execute_cmd(char* line);
+int f_if(int arg_count) {
+    if (arg_count != 4 && arg_count != 6) {
+        fprintf(stderr, "Error: if syntax -> if x then y [else z]\n");
+        return 1;
+    }
+    if (strcmp(tokens[2], "then") != 0) {
+        fprintf(stderr, "Error: if syntax -> if x then y [else z]\n");
+        return 2;
+    }
+    if (arg_count == 6 && strcmp(tokens[4], "else") != 0) {
+        fprintf(stderr, "Error: if syntax -> if x then y [else z]\n");
+        return 2;
+    }
+    if (strcmp(tokens[1], "true") == 0)
+        return execute_cmd(tokens[3]);
+    else
+        return (arg_count == 6) ? execute_cmd(tokens[5]) : 0;
+}
+int parse_subsh(char* line);
+int f_while(int arg_count) {
+    if (arg_count != 4 && strcmp(tokens[2], "do") != 0) {
+        fprintf(stderr, "Error: while syntax -> while x do y\n");
+        return 1; 
+    }
+    char condition[LINE_SIZE];
+    char command[LINE_SIZE];
+    strcpy(condition, tokens[1]);
+    strcpy(command, tokens[3]);
+    int stat = 0;
+    char cmd[LINE_SIZE];
+    char cnd[LINE_SIZE];
+    strcpy(cnd, condition);
+    parse_subsh(cnd);
+    while (strcmp(cnd, "true") == 0) {
+        strcpy(cmd, command);
+        stat = execute_cmd(cmd);
+        if (stat > 0) return stat;
+        strcpy(cnd, condition);
+        parse_subsh(cnd);
+    }
+    return stat;
+}
+
 //********************************************************************
 
-#define BUILTIN_COUNT 40
+#define BUILTIN_COUNT 48
 char* builtin_cmd_names[] = {"debug", "prompt", "status", "exit", "help", 
 "print", "echo", "len", "sum", "calc", "basename", "dirname",
 "dirch", "dirwd", "dirmk", "dirrm", "dirls",
@@ -655,7 +761,9 @@ char* builtin_cmd_names[] = {"debug", "prompt", "status", "exit", "help",
 "proc", "pids", "pinfo",
 "waitone", "waitall",
 "pipes",
-"set", "get"};
+"set", "get", 
+"lt", "le", "eq", "and", "or", "not",
+"if", "while"};
 int (*builtin_functions[])(int) = { f_debug, f_prompt, f_status, f_exit, f_help,
 f_print, f_echo, f_len, f_sum, f_calc, f_basename, f_dirname, 
 f_dirch, f_dirwd, f_dirmk, f_dirrm, f_dirls, 
@@ -664,7 +772,9 @@ f_pid, f_ppid, f_uid, f_euid, f_gid, f_egid, f_sysinfo,
 f_proc, f_pids, f_pinfo,
 f_waitone, f_waitall,
 f_pipes,
-f_set, f_get};
+f_set, f_get,
+f_lt, f_le, f_eq, f_and, f_or, f_not,
+f_if, f_while};
 
 int tokenize(char* l);
 int find_builtin(char* cmd);
@@ -862,15 +972,16 @@ int execute_external(int arg_count) {
     }
 }
 
-void insert_subsh(char* start, int len, int n) {
+void insert_subsh(char* start, int len, char* subsh_line, int n) {
     char temp[LINE_SIZE];
     strcpy(temp, (start + len));
     strcpy(start, subsh_line);
     strcpy((start + n), temp);
 }
 
-int parse_subsh();
-int execute_subsh(char* start, int len) {
+int parse_subsh(char* line);
+int execute_cmd(char* line);
+int execute_subsh(char* line, char* start, char* subsh_line, int len) {
     int fdsub[2];
     pipe(fdsub);
     fflush(stdin); fflush(stdout);
@@ -879,7 +990,7 @@ int execute_subsh(char* start, int len) {
         dup2(fdsub[1], 1);
         close(fdsub[0]); close(fdsub[1]);
         strcpy(line, subsh_line);
-        int stat = parse_subsh();
+        int stat = parse_subsh(line);
         if (stat > 0) exit(stat);
         int count = tokenize(line);
         int index = find_builtin(tokens[0]);
@@ -895,30 +1006,34 @@ int execute_subsh(char* start, int len) {
             exit(127);
         }
     }
-    close(fdsub[1]);
-    int n = read(fdsub[0], subsh_line, LINE_SIZE - 1);
-    if (n < 0) {
-        perror("read");
-        fflush(stderr);
-        return 1;
+    else {
+        close(fdsub[1]);
+        int n = read(fdsub[0], subsh_line, LINE_SIZE - 1);
+        
+        if (n < 0) {
+            perror("read");
+            fflush(stderr);
+            return 1;
+        }
+        subsh_line[n] = '\0';
+        if (n > 0 && subsh_line[n-1] == '\n') subsh_line[--n] = '\0';
+        insert_subsh(start, len, subsh_line, n);
+        int stat;
+        waitpid(pid, NULL, 0);
+        close(fdsub[0]);
+        return 0;
     }
-    subsh_line[n] = '\0';
-    if (n > 0 && subsh_line[n-1] == '\n') subsh_line[--n] = '\0';
-    insert_subsh(start, len, n);
-    int stat;
-    waitpid(pid, &stat, 0);
-    if (WIFEXITED(stat)) {
-        return WEXITSTATUS(stat);
-    }
-    return 2;
 }
-int parse_subsh() {
+int parse_subsh(char *line) {
     char* l = line;
     char* start = NULL;
     char prev = '\0';
-    int in = 0, cnt = 0;
+    int in = 0, cnt = 0, quotes = 0;
     while (*l != '\0') {
-        if ((in || prev == '$') && *l == '(') {
+        if (*l == '"') {
+            quotes = (quotes) ? 0 : 1;
+        }
+        if ((in || prev == '$') && !quotes && *l == '(') {
             in++;
             if (in == 1) {
                 start = l;
@@ -930,22 +1045,50 @@ int parse_subsh() {
         if (in) {
             subsh_line[cnt++] = *l;
         }
-        if (in && *l == ')') {
+        if (in && !quotes && *l == ')') {
             in--;
             if (in == 0) {
                 subsh_line[--cnt] = '\0';
-                int stat = execute_subsh(start-1, cnt+3);
-                return (stat > 0) ? stat : parse_subsh();
+                int stat = execute_subsh(line, start-1, subsh_line, cnt+3);
+                return (stat > 0) ? stat : parse_subsh(line);
             }
         }
         prev = *l;
         l++;
     }
-    //printf("%d %s\n", cnt, subsh_line);
     return 0;
 }
-int execute_cmd() {
-    int subsh_stat = parse_subsh();
+int execute_cmd(char *line);
+int parse_chain(char** line) {
+    char* l = *line;
+    int in_subsh = 0;
+    int in_quotes = 0;
+    while (*l != '\0') {
+        if (*l == '(') {
+            in_subsh++;  
+        }
+        else if (in_subsh && *l == ')') {
+            in_subsh--;
+        }
+        else if (*l == '"') {
+            in_quotes = (in_quotes) ? 0 : 1; 
+        }
+        else if (*l == ';' && !in_quotes && !in_subsh) {
+            *l = '\0';
+            l++;
+            int stat = execute_cmd(*line);
+            *line = l;
+            return (stat > 0) ? stat : parse_chain(line);
+        }
+        l++;
+    }
+    return 0;
+}
+int execute_cmd(char *line) {
+    int chain_stat = parse_chain(&line);
+    if (chain_stat > 0) return chain_stat;
+
+    int subsh_stat = parse_subsh(line);
     if (subsh_stat > 0) return subsh_stat;
 
     int tokens_count = tokenize(line);
@@ -1002,7 +1145,7 @@ int main () {
             printf("Input line: '%s'\n", line);
             fflush(stdout);
         }
-        int s = execute_cmd();
+        int s = execute_cmd(line);
         status = (s == ESCAPE_STATUS) ? status : s;
         if(iact) {
             printf("%s%s> %s", GREEN_START, prompt, GREEN_END);

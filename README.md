@@ -117,22 +117,111 @@ Lupina podpira tako izvajanje **vgrajenih** ukazov (našteti spodaj) kot tudi po
   - Če otrok ne obstaja, vrne izhodni status 0, sicer pa izhodni status končanega otroka.
 - ```waitall```
   - Počaka na vse otroke.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+### Cevovod
+- ```pipes "stopnja 1" "stopnja 2" "stopnja 3" ...```
+  - Prisotni morata biti vsaj dve stopnji.
+  - Primer cevovoda v lupini mysh:
+    ```bash
+    pipes "cat /etc/passwd" "cut -d: -f7" "sort" "uniq -c"
+    ```
+    kar je enakovredno kot naslednji cevovod v bash:
+    ```bash
+    cat /etc/passwd | cut -d: -f7 | sort | uniq -c
+    ```
+  - Znotraj stopenj se preusmerjanje in izvajanje v ozadju ne izvaja.
+  - Možna pa je seveda preusmeritev na nivoju celotnega cevovoda in tudi njegovo izvajanje v ozadju.
+### Spremenljivke
+- ```set ime vrednost```
+  - Nastavi spremenljivko "ime" na podano vrednost.
+  - Če spremenljivka ne obstaja, jo ustvari in ji dodeli podano vrenost.
+- ```get ime```
+  - Izpiše vrednost spremenljivke "ime".
+  - Če spremenljivka ne obstaja, vrne izhodni status 1.
+- Primeri uporabe:
+  ```bash
+  set a 1
+  get a
+  set str "Hello World"
+  get str
+  ```
+### Združevanje ukazov
+- V isti vrstici lahko zapišemo tudi več ukazov.
+- Ukaze med seboj ločimo s podpičjem (;).
+- Ukazi se izvedejo zaporedno (eden za drugim).
+- Primeri uporabe:
+  ```bash
+  echo prvi ; echo drugi ; echo tretji
+  echo start ; sleep 2 ; echo stop
+  ```
+### Podlupina z zamenjavo izpisa
+- Ukaz se izvede znotraj podlupine, nato se njegov izpis uporabi v glavnem ukazu.
+- Ukaz, ki se bo izvajal v podlupini označimo takole: ```$(ukaz)```
+- Primeri uporabe:
+  ```bash
+  wc $(ls)
+  set a $(calc $(get a) + 1)     #isto kot a++
+  ```
+### Vgrajeni primerjalni ukazi in logični operatorji
+- ```lt a b```
+  - Izpiše "true", če velja ```a < b```.
+  - Sicer izpiše "false".
+- ```le a b```
+  - Izpiše "true", če velja ```a <= b```.
+  - Sicer izpiše "false".
+- ```eq a b```
+  - Izpiše "true", če velja ```a = b```.
+  - Sicer izpiše "false".
+  - Deluje tudi za primerjavo enakosti nizov.
+- Primeri uporabe:
+```bash
+lt 1 1       #izpiše false
+le 1 1       #izpiše true
+eq 1 1       #izpiše true
+eq niz niz   #izpiše true
+```
+- ```and arg1 arg2 ...```
+  - Izpiše "true", če imajo vsi argumenti vrednost "true".
+  - Sicer izpiše "false".
+- ```or arg1 arg2 ...```
+  - Izpiše "false", če imajo vsi argumenti vrednost "false".
+  - Sicer izpiše "true".
+- ```not arg1 ```
+  - Izpiše "true", če ima argument vrednost "false".
+  - Sicer izpiše "false".
+- Primeri uporabe:
+```bash
+and true true           #izpiše true
+or false false true     #izpiše true
+not true                #izpiše false
+not $(eq 1 1)           #izpiše false
+```
+### if stavek in while zanka
+- ```if pogoj then "ukaz" [else "ukaz"]```
+  - else del je opcijski.
+  - Primeri uporabe:
+  ```bash
+  if true then "echo true"                        #izpiše true
+  if $(lt 2 1) then "echo 2<1" else "echo 2>=1"   #izpiše 2>=1
+  ```
+- ```while "pogoj" do "ukaz"```
+  - Pogoj mora biti obvezno v dvojnih narekovajih (zato, ker se mora preverjati (izvajanje podlupin) pri vsakem obhodu zanke).
+  - Primer neskončne zanke:
+  ```bash
+  while true do "echo loop"
+  ```
+  - Še en primer zanke:
+  ```bash
+  set i 0      #nastavi i na 0
+  while "$(lt $(get i) 5)" do "set i $(calc $(get i) + 1)"    #povečuje i dokler je manjši od 5
+  echo $(get i)    #izpiše i (izpiše 5)
+  ```
+  - Zanka, ki izpiše števila med 1 in 100:
+  ```bash
+  set i 1 ; set n 100
+  while "$(le $(get i) $(get n))" do "echo $(get i) ; set i $(calc $(get i) + 1)"
+  #nato z if stavkom preverimo ali je i enak 101:
+  if $(eq $(get i) 101) then "echo true" else "echo false"    #izpiše true
+  ```
 
 
 

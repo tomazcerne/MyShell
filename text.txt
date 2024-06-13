@@ -1,9 +1,0 @@
-
-
-echo zacetek
-exit 42 &
-waitone
-status
-echo konec
-
-set i 0 ; set n 100 ; while "$(lt $(get i) $(get n))" do "echo $(get i) ; set i $(calc $(get i) + 1)"

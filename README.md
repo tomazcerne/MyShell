@@ -1,5 +1,6 @@
 # MyShell: monolitna ukazna lupina za Linux sisteme
-Projekt je bil izdelan v okviru predmeta Operacijski sistemi. Sam sem na koncu dodal še nekaj dodatnih funkcionalnosti.
+Projekt je bil izdelan v okviru predmeta Operacijski sistemi. Sam sem na koncu dodal še nekaj dodatnih funkcionalnosti 
+(označene z *).
 ## Navodila za zagon programa
 - obvezno v terminalu operacijskega sistema Linux:
   ```bash
@@ -7,13 +8,13 @@ Projekt je bil izdelan v okviru predmeta Operacijski sistemi. Sam sem na koncu d
   ./a.out
 ## Funkcionalnosti lupine
 ### Struktura ukaza
-Najprej navedemo ime ukaza skupaj z njegovimi argumenti, na koncu ukaza imamo možnost preusmeritve vhoda (znak <), preusmeritve izhoda (znak >)
-in/ali izvajanje v ozadju (znak &). 
-```bash
-imeUkaza arg1 arg2 arg3 ... <imeVhodneDatoteke >imeIzhodneDatoteke &
-```
+- Najprej navedemo ime ukaza skupaj z njegovimi argumenti, na koncu ukaza imamo možnost preusmeritve vhoda (znak <), preusmeritve izhoda (znak >)
+  in/ali izvajanje v ozadju (znak &). 
+  ```bash
+  imeUkaza arg1 arg2 arg3 ... <imeVhodneDatoteke >imeIzhodneDatoteke &
+  ```
 ### Izvajanje ukazov
-Lupina podpira tako izvajanje **vgrajenih** ukazov (našteti spodaj) kot tudi poljubnih **zunanjih** ukazov (programov).
+- Lupina podpira tako izvajanje **vgrajenih** ukazov (našteti spodaj) kot tudi poljubnih **zunanjih** ukazov (programov).
 ### Osnovni vgrajeni ukazi
 - ```debug level ```
   - Opcijski številčni argument level podaja nivo razhroščevanja (debug level).
@@ -130,7 +131,7 @@ Lupina podpira tako izvajanje **vgrajenih** ukazov (našteti spodaj) kot tudi po
     ```
   - Znotraj stopenj se preusmerjanje in izvajanje v ozadju ne izvaja.
   - Možna pa je seveda preusmeritev na nivoju celotnega cevovoda in tudi njegovo izvajanje v ozadju.
-### Spremenljivke
+### Spremenljivke *
 - ```set ime vrednost```
   - Nastavi spremenljivko "ime" na podano vrednost.
   - Če spremenljivka ne obstaja, jo ustvari in ji dodeli podano vrenost.
@@ -144,7 +145,7 @@ Lupina podpira tako izvajanje **vgrajenih** ukazov (našteti spodaj) kot tudi po
   set str "Hello World"
   get str
   ```
-### Združevanje ukazov
+### Združevanje ukazov *
 - V isti vrstici lahko zapišemo tudi več ukazov.
 - Ukaze med seboj ločimo s podpičjem (;).
 - Ukazi se izvedejo zaporedno (eden za drugim).
@@ -153,7 +154,7 @@ Lupina podpira tako izvajanje **vgrajenih** ukazov (našteti spodaj) kot tudi po
   echo prvi ; echo drugi ; echo tretji
   echo start ; sleep 2 ; echo stop
   ```
-### Podlupina z zamenjavo izpisa
+### Podlupina z zamenjavo izpisa *
 - Ukaz se izvede znotraj podlupine, nato se njegov izpis uporabi v glavnem ukazu.
 - Ukaz, ki se bo izvajal v podlupini označimo takole: ```$(ukaz)```
 - Primeri uporabe:
@@ -161,7 +162,7 @@ Lupina podpira tako izvajanje **vgrajenih** ukazov (našteti spodaj) kot tudi po
   wc $(ls)
   set a $(calc $(get a) + 1)     #isto kot a++
   ```
-### Vgrajeni primerjalni ukazi in logični operatorji
+### Vgrajeni primerjalni ukazi in logični operatorji *
 - ```lt a b```
   - Izpiše "true", če velja ```a < b```.
   - Sicer izpiše "false".
@@ -195,7 +196,7 @@ or false false true     #izpiše true
 not true                #izpiše false
 not $(eq 1 1)           #izpiše false
 ```
-### if stavek in while zanka
+### if stavek in while zanka *
 - ```if pogoj then "ukaz" [else "ukaz"]```
   - else del je opcijski.
   - Primeri uporabe:
